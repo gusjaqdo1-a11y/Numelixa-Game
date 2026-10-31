@@ -1,1 +1,21 @@
-{"name":"zyven-city","version":"0.2.0","private":true,"scripts":{"dev":"vite","build":"vite build","preview":"vite preview","android:sync":"npx cap sync android"},"dependencies":{"@capacitor/android":"latest","@capacitor/core":"latest","vite":"latest","three":"latest"},"devDependencies":{"@capacitor/cli":"latest"}}
+{
+  "name": "zyven-city",
+  "version": "0.3.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "android:sync": "npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "latest",
+    "@capacitor/core": "latest",
+    "vite": "latest",
+    "three": "latest",
+    "peerjs": "^1.5.5"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest"
+  }
+}
