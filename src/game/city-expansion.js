@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 
-// GTA-style fictional city systems: enterable properties, bank heists, wanted stars and police pursuit.
-// This is a gameplay layer only; it does not model real-world criminal procedures.
+// Fictional open-world gameplay layer: enterable properties, bank heists, wanted stars and police pursuit.
 addEventListener('zyven:ready', (event) => {
   const { scene, player, box, mat, toast, addCoins } = event.detail;
   if (!scene || !player) return;
@@ -35,10 +34,10 @@ addEventListener('zyven:ready', (event) => {
 
   const building = (x, z, w, d, h, name, bank=false) => {
     const g = new THREE.Group(); g.position.set(x,0,z); scene.add(g);
-    const shell = box(g,0,h/2,0,w,h,d,mat(bank?0x17243a:0x26313e,.48,.25),true);
-    const roof = box(g,0,h+.25,0,w+.4,.45,d+.4,mat(0x101820,.32,.55),true);
+    box(g,0,h/2,0,w,h,d,mat(bank?0x17243a:0x26313e,.48,.25),true);
+    box(g,0,h+.25,0,w+.4,.45,d+.4,mat(0x101820,.32,.55),true);
     const door = box(g,0,1.5,d/2+.08,bank?3.5:2.5,3,.18,mat(bank?0x0c0f15:0x19232c,.28,.65),true);
-    const sign = box(g,0,h*.72,d/2+.13,w*.62,.75,.08,new THREE.MeshBasicMaterial({color:bank?0xffc94a:0x67d7ff}),false);
+    box(g,0,h*.72,d/2+.13,w*.62,.75,.08,new THREE.MeshBasicMaterial({color:bank?0xffc94a:0x67d7ff}),false);
     const interior = new THREE.Group(); interior.visible=false; scene.add(interior);
     box(interior,0,.05,0,w-1,.1,d-1,mat(0x1a2028,.86));
     box(interior,0,3.2,-(d/2-0.5),w-1,.2,.2,mat(0x3c4855,.45,.15));
@@ -64,7 +63,6 @@ addEventListener('zyven:ready', (event) => {
   building(-120,-90,16,13,10,'OLD TOWN HOUSE');
   building(80,105,15,13,10,'AIRPORT HOUSE');
 
-  // Armored cash van near the bank becomes an optional side mission target.
   const van = new THREE.Group(); van.position.set(-57,0,-35); scene.add(van);
   box(van,0,1.2,0,5,2.2,2.2,mat(0x26313a,.32,.65),true);
   box(van,0,2.35,0,2.7,.25,1.9,mat(0x10151b,.22,.7),true);
@@ -75,7 +73,7 @@ addEventListener('zyven:ready', (event) => {
     const angle = Math.random()*Math.PI*2, dist = 38 + Math.random()*18;
     const car = new THREE.Group();
     car.position.copy(player.root.position).add(new THREE.Vector3(Math.cos(angle)*dist,0,Math.sin(angle)*dist));
-    const body=box(car,0,1,0,4.3,1.5,7.2,mat(0x101820,.3,.7),true);
+    box(car,0,1,0,4.3,1.5,7.2,mat(0x101820,.3,.7),true);
     box(car,0,1.8,0,3.2,.55,3.1,mat(0x17212b,.2,.65),true);
     box(car,-1.4,1.75,0,.45,.25,1.6,mat(0x0a0d12,.2,.7));
     const red=new THREE.MeshBasicMaterial({color:0xff334d}), blue=new THREE.MeshBasicMaterial({color:0x3d8cff});
@@ -84,7 +82,7 @@ addEventListener('zyven:ready', (event) => {
   };
 
   const setWanted = (level) => {
-    wantedLevel = THREE.MathUtils.clamp(level,0,5);
+    wantedLevel = THREE.MathUtils.clamp(level,0,5); wantedCooldown=0;
     wanted.style.display = wantedLevel ? 'block' : 'none';
     wanted.querySelector('.wanted-stars').textContent = '★'.repeat(wantedLevel)+'☆'.repeat(5-wantedLevel);
     wanted.querySelector('.wanted-stars').style.color = wantedLevel >= 3 ? '#ff5366' : '#fff';
@@ -93,7 +91,7 @@ addEventListener('zyven:ready', (event) => {
 
   const beginHeist = () => {
     if (heist || wantedLevel) return;
-    heist = { timer:12, progress:0, reward:1800 };
+    heist = { timer:12, reward:1800 };
     banner.style.display='block'; banner.textContent='BANK HEIST • SECURE THE VAULT';
     toast('BANK HEIST STARTED — 12 SECONDS');
   };
@@ -101,13 +99,10 @@ addEventListener('zyven:ready', (event) => {
   const enter = (item) => {
     if (item.inside) {
       player.root.position.set(item.doorWorld.x,item.doorWorld.y,item.doorWorld.z+3);
-      item.inside=false; item.interior.visible=false; toast('EXITED '+item.name);
+      item.inside=false; item.interior.visible=false; item.g.visible=true; toast('EXITED '+item.name);
     } else {
-      const p=item.g.position.clone(); p.y=0; player.root.position.copy(p).add(new THREE.Vector3(0,0,-item.g.position.z*0));
-      player.root.position.set(p.x,p.y,p.z);
-      item.inside=true; item.interior.visible=true;
-      // Keep the interior at the same coordinates, but raise the player slightly so the room is readable.
-      player.root.position.y=.15;
+      player.root.position.set(item.g.position.x,.15,item.g.position.z);
+      item.inside=true; item.g.visible=false; item.interior.visible=true;
       toast('ENTERED '+item.name);
       if(item.bank) beginHeist();
     }
@@ -118,11 +113,7 @@ addEventListener('zyven:ready', (event) => {
     if(nearest) enter(nearest);
   };
 
-  addEventListener('keydown', e=>{
-    if(e.key.toLowerCase()==='e') interact.click();
-    if(e.key.toLowerCase()==='r' && wantedLevel===0 && !heist) beginHeist();
-  });
-
+  addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='e') interact.click(); if(e.key.toLowerCase()==='r' && wantedLevel===0 && !heist) beginHeist(); });
   addEventListener('zyven:crime', e => setWanted(Math.max(wantedLevel, e.detail?.level||1)));
 
   const tick = () => {
@@ -132,21 +123,16 @@ addEventListener('zyven:ready', (event) => {
     if(nearest) interact.textContent=nearest.inside?'EXIT BUILDING':(nearest.bank?'START BANK HEIST':'ENTER '+nearest.name);
 
     if(heist){
-      heist.timer-=dt; heist.progress=Math.max(0,1-heist.timer/12); banner.textContent=`BANK HEIST • VAULT ${Math.round(heist.progress*100)}%`;
+      heist.timer-=dt; banner.textContent=`BANK HEIST • VAULT ${Math.round((1-heist.timer/12)*100)}%`;
       if(heist.timer<=0){ addCoins(heist.reward); heist=null; setWanted(2); banner.textContent='ESCAPE! POLICE ALERTED'; toast('+1,800 CITY CASH • 2 STAR WANTED'); setTimeout(()=>banner.style.display='none',2600); }
     }
 
     for(let i=police.length-1;i>=0;i--){
       const car=police[i]; const dx=player.root.position.x-car.position.x, dz=player.root.position.z-car.position.z, len=Math.hypot(dx,dz)||1;
       car.position.x += dx/len*car.userData.speed*dt; car.position.z += dz/len*car.userData.speed*dt; car.rotation.y=Math.atan2(dx,dz); car.userData.life+=dt;
-      if(wantedLevel===0 || car.userData.life>55){scene.remove(car); police.splice(i,1);}
-      else if(len<4.8){ player.health=Math.max(0,player.health-(wantedLevel*1.8*dt)); }
+      if(wantedLevel===0 || car.userData.life>55){scene.remove(car); police.splice(i,1);} else if(len<4.8){ player.health=Math.max(0,player.health-(wantedLevel*1.8*dt)); }
     }
-
-    if(wantedLevel>0){
-      wantedCooldown += dt;
-      if(wantedCooldown>35 && police.length===0){ wantedLevel=0; wanted.style.display='none'; wantedCooldown=0; toast('WANTED LEVEL CLEARED'); }
-    }
+    if(wantedLevel>0){ wantedCooldown += dt; if(wantedCooldown>35 && police.length===0){ wantedLevel=0; wanted.style.display='none'; wantedCooldown=0; toast('WANTED LEVEL CLEARED'); } }
     requestAnimationFrame(tick);
   };
   tick();
