@@ -1,95 +1,24 @@
 import Peer from 'peerjs';
-
-const MAX_PLAYERS = 4;
-const ROOM_PREFIX = 'zyven-room-';
-
-function makeCode(){
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out='';
-  for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
-  return out;
-}
-
-export class OnlineRoom {
-  constructor({onPlayerCount=()=>{},onRemoteState=()=>{},onStatus=()=>{},onVoice=()=>{}}={}){
-    this.onPlayerCount=onPlayerCount; this.onRemoteState=onRemoteState; this.onStatus=onStatus; this.onVoice=onVoice;
-    this.peer=null; this.connections=new Map(); this.roomCode=''; this.host=false; this.localStream=null; this.calls=new Map();
-    this.id='';
-  }
-  async create(){
-    this.destroy(); this.host=true; this.roomCode=makeCode();
-    await this.openPeer(`${ROOM_PREFIX}${this.roomCode}`);
-    this.onStatus(`ROOM ${this.roomCode} READY`); return this.roomCode;
-  }
-  async join(code){
-    code=String(code||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-    if(code.length!==6) throw new Error('Room code must be 6 characters');
-    this.destroy(); this.host=false; this.roomCode=code;
-    await this.openPeer();
-    this.connectToHost(code);
-    this.onStatus(`JOINING ${code}…`); return code;
-  }
-  openPeer(id){
-    return new Promise((resolve,reject)=>{
-      this.peer=new Peer(id,{debug:0});
-      this.peer.on('open',id=>{this.id=id;resolve(id)});
-      this.peer.on('error',e=>{this.onStatus(`NETWORK: ${e.type||'ERROR'}`);reject(e)});
-      this.peer.on('connection',conn=>this.accept(conn));
-      this.peer.on('call',call=>this.acceptCall(call));
-    });
-  }
-  connectToHost(code){
-    const conn=this.peer.connect(`${ROOM_PREFIX}${code}`,{reliable:true,serialization:'json'});
-    this.accept(conn);
-  }
-  accept(conn){
-    conn.on('open',()=>{
-      this.connections.set(conn.peer,conn);
-      conn.send({type:'hello',id:this.id,host:this.host});
-      this.onPlayerCount(this.connections.size+1);
-      this.onStatus(`ONLINE • ${this.connections.size+1}/${MAX_PLAYERS}`);
-    });
-    conn.on('data',msg=>{
-      if(msg?.type==='state') this.onRemoteState(conn.peer,msg);
-      if(msg?.type==='voice-ready') this.onStatus('VOICE CONNECTED');
-    });
-    conn.on('close',()=>{this.connections.delete(conn.peer);this.onPlayerCount(this.connections.size+1)});
-    conn.on('error',()=>this.connections.delete(conn.peer));
-  }
-  broadcast(state){
-    const msg={type:'state',...state};
-    for(const conn of this.connections.values()) if(conn.open) conn.send(msg);
-  }
-  async enableVoice(){
-    if(!navigator.mediaDevices?.getUserMedia) throw new Error('Voice requires HTTPS and microphone permission');
-    this.localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
-    for(const peerId of this.connections.keys()) this.callPeer(peerId);
-    this.onStatus('MIC ON • VOICE READY');
-  }
-  callPeer(peerId){
-    if(!this.localStream||this.calls.has(peerId)) return;
-    const call=this.peer.call(peerId,this.localStream); if(!call)return;
-    this.calls.set(peerId,call);
-    call.on('stream',stream=>this.playStream(peerId,stream));
-    call.on('close',()=>this.calls.delete(peerId));
-  }
-  acceptCall(call){
-    if(!this.localStream){call.answer();}
-    else call.answer(this.localStream);
-    this.calls.set(call.peer,call);
-    call.on('stream',stream=>this.playStream(call.peer,stream));
-    call.on('close',()=>this.calls.delete(call.peer));
-  }
-  playStream(peerId,stream){
-    let audio=document.querySelector(`audio[data-peer="${peerId}"]`);
-    if(!audio){audio=document.createElement('audio');audio.dataset.peer=peerId;audio.autoplay=true;audio.playsInline=true;audio.style.display='none';document.body.appendChild(audio)}
-    audio.srcObject=stream; this.onVoice(peerId);
-  }
-  leave(){this.destroy();this.onPlayerCount(1);this.onStatus('OFFLINE');}
-  destroy(){
-    for(const c of this.connections.values()) c.close(); this.connections.clear();
-    for(const c of this.calls.values()) c.close(); this.calls.clear();
-    this.localStream?.getTracks().forEach(t=>t.stop()); this.localStream=null;
-    this.peer?.destroy(); this.peer=null; this.roomCode='';
-  }
-}
+import * as THREE from 'three';
+const MAX_PLAYERS=4,PREFIX='zyven-room-',chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const code6=()=>Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+export class OnlineRoom{
+constructor(){this.peer=null;this.connections=new Map();this.calls=new Map();this.remote=new Map();this.localStream=null;this.code='';this.scene=null;this.car=null}
+create(){this.leave();this.code=code6();return this.open(`${PREFIX}${this.code}`).then(()=>this.status(`ROOM ${this.code} READY`)).then(()=>this.code)}
+join(raw){this.leave();this.code=String(raw||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();if(this.code.length!==6)throw Error('Enter a 6-character room code');return this.open().then(()=>{this.connect(`${PREFIX}${this.code}`);this.status(`JOINING ${this.code}…`);return this.code})}
+open(id){return new Promise((resolve,reject)=>{this.peer=new Peer(id,{debug:0});this.peer.on('open',resolve);this.peer.on('connection',c=>this.accept(c));this.peer.on('call',c=>this.acceptCall(c));this.peer.on('error',e=>{this.status(`NETWORK ERROR: ${e.type||'unknown'}`);reject(e)})})}
+connect(id){this.accept(this.peer.connect(id,{reliable:true,serialization:'json'}))}
+accept(c){c.on('open',()=>{if(this.connections.size>=MAX_PLAYERS-1){c.close();return}this.connections.set(c.peer,c);this.updateCount();this.status(`ONLINE • ${this.connections.size+1}/${MAX_PLAYERS}`);if(this.localStream)this.call(c.peer)});c.on('data',m=>{if(m?.type==='state')this.remoteState(c.peer,m)});c.on('close',()=>{this.connections.delete(c.peer);this.removeRemote(c.peer);this.updateCount()});c.on('error',()=>{this.connections.delete(c.peer);this.removeRemote(c.peer);this.updateCount()})}
+bindGame(scene,car){this.scene=scene;this.car=car;this.buildUI();setInterval(()=>this.tick(),70)}
+tick(){if(!this.car)return;const s={type:'state',x:this.car.position.x,z:this.car.position.z,r:this.car.rotation.y,t:Date.now()};for(const c of this.connections.values())if(c.open)c.send(s);for(const[id,p]of this.remote){if(Date.now()-p.t>5000)this.removeRemote(id);else{p.mesh.position.lerp(new THREE.Vector3(p.x,.1,p.z),.25);p.mesh.rotation.y=p.r}}}
+remoteState(id,m){let p=this.remote.get(id);if(!p){const g=new THREE.Group(),body=new THREE.Mesh(new THREE.BoxGeometry(2.5,.75,4.3),new THREE.MeshStandardMaterial({color:0xff3d6e,metalness:.65,roughness:.24}));body.position.y=.8;const glow=new THREE.Mesh(new THREE.BoxGeometry(.5,.15,.12),new THREE.MeshBasicMaterial({color:0xffd6e3}));glow.position.set(0,1.05,-2.2);g.add(body,glow);this.scene.add(g);p={mesh:g,x:m.x,z:m.z,r:m.r,t:m.t};this.remote.set(id,p)}else Object.assign(p,{x:m.x,z:m.z,r:m.r,t:m.t})}
+removeRemote(id){const p=this.remote.get(id);if(p){this.scene?.remove(p.mesh);this.remote.delete(id)}}
+async voice(){if(!navigator.mediaDevices?.getUserMedia)throw Error('Voice needs HTTPS and microphone permission');this.localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});for(const id of this.connections.keys())this.call(id);this.status('🎙 VOICE ON')}
+call(id){if(!this.localStream||this.calls.has(id))return;const c=this.peer.call(id,this.localStream);if(!c)return;this.calls.set(id,c);c.on('stream',s=>this.audio(id,s))}
+acceptCall(c){c.answer(this.localStream||undefined);this.calls.set(c.peer,c);c.on('stream',s=>this.audio(c.peer,s))}
+audio(id,s){let a=document.querySelector(`audio[data-zyven="${id}"]`);if(!a){a=document.createElement('audio');a.dataset.zyven=id;a.autoplay=true;a.playsInline=true;a.style.display='none';document.body.appendChild(a)}a.srcObject=s}
+status(t){const e=document.querySelector('#netStatus');if(e)e.textContent=t}
+updateCount(){const e=document.querySelector('#players');if(e)e.textContent=`${this.connections.size+1} PLAYER${this.connections.size?'S':''}`}
+buildUI(){if(document.querySelector('#onlinePanel'))return;const p=document.createElement('div');p.id='onlinePanel';p.innerHTML=`<div class="online-head"><b>ZYVEN <span>ONLINE</span></b><button id="closeOnline">×</button></div><div class="online-tabs"><button id="createRoom">CREATE ROOM</button><button id="joinRoom">JOIN ROOM</button></div><div class="room-code" id="roomCode">------</div><div class="room-hint">Share the 6-character code • up to 4 players</div><input id="roomInput" maxlength="6" placeholder="ENTER ROOM CODE"/><div class="online-actions"><button id="voiceBtn">🎙 VOICE CHAT</button><button id="leaveRoom">LEAVE</button></div><small id="netStatus">OFFLINE • PRIVATE ROOM</small>`;document.body.appendChild(p);document.querySelector('#closeOnline').onclick=()=>p.classList.remove('open');document.querySelector('#createRoom').onclick=async()=>{try{const c=await this.create();document.querySelector('#roomCode').textContent=c;p.classList.add('open')}catch(e){this.status(e.message)}};document.querySelector('#joinRoom').onclick=async()=>{try{const c=await this.join(document.querySelector('#roomInput').value);document.querySelector('#roomCode').textContent=c;p.classList.add('open')}catch(e){this.status(e.message)}};document.querySelector('#voiceBtn').onclick=async()=>{try{await this.voice()}catch(e){this.status(e.message)}};document.querySelector('#leaveRoom').onclick=()=>{this.leave();document.querySelector('#roomCode').textContent='------'};const b=document.createElement('button');b.id='onlineBtn';b.textContent='MULTIPLAYER';document.body.appendChild(b);b.onclick=()=>p.classList.toggle('open')}
+leave(){for(const c of this.connections.values())c.close();for(const id of this.remote.keys())this.removeRemote(id);for(const c of this.calls.values())c.close();this.localStream?.getTracks().forEach(t=>t.stop());this.connections.clear();this.calls.clear();this.peer?.destroy();this.peer=null;this.code='';this.status('OFFLINE • PRIVATE ROOM');this.updateCount()}}
+const online=new OnlineRoom();window.ZyvenOnline=online;window.addEventListener('zyven:ready',e=>online.bindGame(e.detail.scene,e.detail.car));
