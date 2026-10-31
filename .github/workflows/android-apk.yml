@@ -11,25 +11,42 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
+
       - name: Build web game
         run: npm install && npm run build
+
       - name: Create Android project
         run: npx cap add android
+
       - name: Sync Capacitor
         run: npx cap sync android
+
       - name: Force landscape orientation
-        run: python3 -c "from pathlib import Path; p=Path('android/app/src/main/AndroidManifest.xml'); s=p.read_text(); s=s.replace('<activity', '<activity android:screenOrientation=\"landscape\" android:configChanges=\"orientation|screenSize|keyboardHidden\"', 1); p.write_text(s)"
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          s = s.replace('android:screenOrientation="landscape"', '')
+          s = s.replace('android:configChanges="orientation|screenSize|keyboardHidden"', '')
+          s = s.replace('<activity ', '<activity android:screenOrientation="landscape" android:configChanges="orientation|screenSize|keyboardHidden" ', 1)
+          p.write_text(s)
+          PY
+
       - name: Build debug APK
-        run: cd android && ./gradlew assembleDebug
+        run: cd android && ./gradlew assembleDebug --stacktrace
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
