@@ -45,10 +45,20 @@ export class PlayerCharacter {
     const x = input.x, z = input.y; const mag = Math.min(1, Math.hypot(x, z));
     const running = input.run && mag > .15; const speed = running ? this.runSpeed : this.speed;
     if (mag > .05) {
+      // Mobile joystick is camera-relative: push up = move toward the camera's forward direction.
+      // The character now turns toward the exact direction of travel instead of sliding sideways.
       const forward = new THREE.Vector3(Math.sin(cameraYaw), 0, Math.cos(cameraYaw));
       const right = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw));
       const dir = forward.multiplyScalar(z).add(right.multiplyScalar(x));
-      if (dir.lengthSq() > .001) { dir.normalize(); this.direction.lerp(dir, Math.min(1, dt * 12)).normalize(); this.root.position.addScaledVector(dir, speed * mag * dt); }
+      if (dir.lengthSq() > .001) {
+        dir.normalize();
+        this.direction.lerp(dir, Math.min(1, dt * 14)).normalize();
+        this.root.position.addScaledVector(dir, speed * mag * dt);
+        const targetYaw = Math.atan2(this.direction.x, this.direction.z);
+        let delta = targetYaw - this.root.rotation.y;
+        delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+        this.root.rotation.y += delta * Math.min(1, dt * 14);
+      }
       this.state = running ? 'run' : 'walk';
       this.walkTime += dt * (running ? 13 : 9);
     } else if (this.actionTimer <= 0) this.state = 'idle';
