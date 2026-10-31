@@ -28,13 +28,7 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
       - name: Force landscape orientation
-        run: python3 - <<'PY'
-          from pathlib import Path
-          p=Path('android/app/src/main/AndroidManifest.xml')
-          s=p.read_text()
-          s=s.replace('<activity', '<activity android:screenOrientation="landscape" android:configChanges="orientation|screenSize|keyboardHidden"', 1)
-          p.write_text(s)
-          PY
+        run: python3 -c "from pathlib import Path; p=Path('android/app/src/main/AndroidManifest.xml'); s=p.read_text(); s=s.replace('<activity', '<activity android:screenOrientation=\"landscape\" android:configChanges=\"orientation|screenSize|keyboardHidden\"', 1); p.write_text(s)"
       - name: Build debug APK
         run: cd android && ./gradlew assembleDebug
       - name: Upload APK
